@@ -11,7 +11,10 @@ pub struct TaskControlBlock {
     pub task_status: TaskStatus,
     /// 任务使用的系统调用及调用次数
     pub syscall_nums: [u32; MAX_SYSCALL_NUM],
-
+    /// 任务是否运行过,
+    pub has_been_run:bool,
+    /// 任务第一次执行时的时间,单位ms
+    pub first_run_time:usize,
     /// The task context
     pub task_cx: TaskContext,
 }

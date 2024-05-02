@@ -17,6 +17,7 @@ mod task;
 use crate::config::{MAX_APP_NUM, MAX_SYSCALL_NUM};
 use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
+use crate::timer::get_time_ms;
 use lazy_static::*;
 use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
@@ -54,6 +55,8 @@ lazy_static! {
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
             syscall_nums: [0; MAX_SYSCALL_NUM], // 系统调用次数
+            has_been_run:false,
+            first_run_time:0,
             task_status: TaskStatus::UnInit,
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
@@ -81,6 +84,9 @@ impl TaskManager {
         let mut inner = self.inner.exclusive_access();
         let task0 = &mut inner.tasks[0];
         task0.task_status = TaskStatus::Running;
+        // task0第一被调用，它的首次运行时间记录一下
+        task0.has_been_run = true;
+        task0.first_run_time = get_time_ms();
         let next_task_cx_ptr = &task0.task_cx as *const TaskContext;
         drop(inner);
         let mut _unused = TaskContext::zero_init();
@@ -124,6 +130,10 @@ impl TaskManager {
             let current = inner.current_task;
             inner.tasks[next].task_status = TaskStatus::Running;
             inner.current_task = next;
+            if !inner.tasks[next].has_been_run { //第一次运行
+                inner.tasks[next].has_been_run = true;
+                inner.tasks[next].first_run_time = get_time_ms();
+            }
             let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
             let next_task_cx_ptr = &inner.tasks[next].task_cx as *const TaskContext;
             drop(inner);
@@ -145,12 +155,12 @@ impl TaskManager {
         inner.tasks[current].syscall_nums[syscall_id] += 1;
     }
 
-    fn get_task_info(&self)-> (TaskStatus,[u32; MAX_SYSCALL_NUM]){
+    fn get_task_info(&self)-> (TaskStatus,[u32; MAX_SYSCALL_NUM],usize){
         // 首先获取当前任务的app_id
         let inner = self.inner.exclusive_access();
         let current = inner.current_task;
         // 使用clone的方式，因为并不想要移动走值，虽然这样无疑效率很低，但是显然实验不用考虑性能
-        (inner.tasks[current].task_status.clone(),inner.tasks[current].syscall_nums.clone())
+        (inner.tasks[current].task_status.clone(),inner.tasks[current].syscall_nums.clone(),inner.tasks[current].first_run_time)
     }
 
 }
@@ -194,6 +204,6 @@ pub fn update_task_syscall_num(syscall_id: usize) {
 }
 
 /// 获取当前任务的状态信息
-pub fn get_task_info() -> (TaskStatus,[u32; MAX_SYSCALL_NUM]) {
+pub fn get_task_info() -> (TaskStatus,[u32; MAX_SYSCALL_NUM],usize) {
     TASK_MANAGER.get_task_info()
 }
