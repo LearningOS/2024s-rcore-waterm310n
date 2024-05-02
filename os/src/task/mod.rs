@@ -14,7 +14,7 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
-use crate::config::MAX_APP_NUM;
+use crate::config::{MAX_APP_NUM, MAX_SYSCALL_NUM};
 use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
 use lazy_static::*;
@@ -53,6 +53,7 @@ lazy_static! {
         let num_app = get_num_app();
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
+            syscall_nums: [0; MAX_SYSCALL_NUM], // 系统调用次数
             task_status: TaskStatus::UnInit,
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
@@ -135,6 +136,23 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+
+    /// 更新TASK控制块中系统调用的次数
+    fn update_task_syscall_num(&self,syscall_id: usize) {
+        // 首先获取当前任务的app_id
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].syscall_nums[syscall_id] += 1;
+    }
+
+    fn get_task_info(&self)-> (TaskStatus,[u32; MAX_SYSCALL_NUM]){
+        // 首先获取当前任务的app_id
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        // 使用clone的方式，因为并不想要移动走值，虽然这样无疑效率很低，但是显然实验不用考虑性能
+        (inner.tasks[current].task_status.clone(),inner.tasks[current].syscall_nums.clone())
+    }
+
 }
 
 /// Run the first task in task list.
@@ -168,4 +186,14 @@ pub fn suspend_current_and_run_next() {
 pub fn exit_current_and_run_next() {
     mark_current_exited();
     run_next_task();
+}
+
+/// 更新当前任务的系统调用次数
+pub fn update_task_syscall_num(syscall_id: usize) {
+    TASK_MANAGER.update_task_syscall_num(syscall_id)
+}
+
+/// 获取当前任务的状态信息
+pub fn get_task_info() -> (TaskStatus,[u32; MAX_SYSCALL_NUM]) {
+    TASK_MANAGER.get_task_info()
 }
