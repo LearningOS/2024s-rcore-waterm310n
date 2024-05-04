@@ -143,3 +143,12 @@ pub fn mmap_helper(start_va: VirtAddr,
     current_task_inner.memory_set.insert_framed_area(start_va, end_va, permission);
     return true;
 }
+
+/// 向当前任务清除指定的虚拟内存帧区域。
+pub fn munmap_helper(start_va: VirtAddr,
+    end_va: VirtAddr) -> bool {
+    // 首先获取当前任务
+    let current_task = current_task().unwrap();
+    let mut inner =  current_task.inner_exclusive_access();
+    inner.memory_set.delete_framed_area(start_va, end_va)
+}

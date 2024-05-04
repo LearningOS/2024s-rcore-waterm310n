@@ -81,6 +81,30 @@ impl MemorySet {
     /// Add a new MapArea into this MemorySet.
     /// Assuming that there are no conflicts in the virtual address
     /// space.
+
+    /// 删掉一块MapArea
+    pub fn delete_framed_area(&mut self,
+        start_va: VirtAddr,
+        end_va: VirtAddr) -> bool {
+        let start_vpn: VirtPageNum = start_va.floor();
+        let end_vpn: VirtPageNum = end_va.ceil();
+        println!("try dealloc [{:?},{:?})",start_vpn,end_vpn);
+        let  (mut flag,mut area_index) = (false,0);
+        for (index,map_area) in self.areas.iter().enumerate() {
+            println!("{:?},{:?}",map_area.vpn_range.get_start(),map_area.vpn_range.get_end());
+            if start_vpn == map_area.vpn_range.get_start() && end_vpn == map_area.vpn_range.get_end() {
+                flag = true;
+                area_index = index;   
+            }
+        }
+        if flag {
+            self.areas[area_index].unmap(&mut self.page_table); //解除页表映射
+            self.areas.remove(area_index); //清除这一块MapArea
+            return true;
+        }
+        return false;
+    }
+
     fn push(&mut self, mut map_area: MapArea, data: Option<&[u8]>) {
         map_area.map(&mut self.page_table);
         if let Some(data) = data {
@@ -323,9 +347,10 @@ impl MemorySet {
     pub fn check_range(&self,start_va: VirtAddr,end_va: VirtAddr) -> bool {
         let start_vpn: VirtPageNum = start_va.floor();
         let end_vpn: VirtPageNum = end_va.ceil();
+        println!("try alloc virtPage[{:?},{:?}]",start_vpn,end_vpn);
         for map_area in self.areas.iter() {
             for vpn in map_area.vpn_range {
-                if start_vpn <= vpn && end_vpn >= vpn {
+                if start_vpn <= vpn && vpn < end_vpn   {
                     return true
                 }
             }

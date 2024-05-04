@@ -5,12 +5,12 @@ use alloc::sync::Arc;
 use core::mem::size_of;
 
 use crate::{
-    config::MAX_SYSCALL_NUM,
+    config::{MAX_SYSCALL_NUM, PAGE_SIZE},
     fs::{open_file, OpenFlags},
     mm::{translated_refmut, translated_str,translated_byte_buffer,MapPermission}, 
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
-        mmap_helper, suspend_current_and_run_next, TaskStatus,get_task_info
+        mmap_helper, munmap_helper, suspend_current_and_run_next, TaskStatus,get_task_info
     },timer::{get_time_ms, get_time_us}
     
 };
@@ -161,11 +161,14 @@ pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
 // YOUR JOB: Implement mmap.
 pub fn sys_mmap(start: usize, len: usize, port: usize) -> isize {
     trace!("kernel: sys_mmap NOT IMPLEMENTED YET!");
-    if port & !0x7 != 0 || port & 0x7 == 0 { // 不满足port定义，错误
-        return -1
+    if port & !0x7 != 0 || port & 0x7 == 0  { // 不满足port定义，错误
+        return -1;
     }
+    if start & (PAGE_SIZE-1) != 0 { // 参数没有对齐，错误
+        return  -1;
+    } 
     let start_va = start.into();
-    let end_va = (start+len).into();
+    let end_va = (start+len).into(); //向上取整
     let mut permission = MapPermission::U;
     if port & 0x1 == 1 {
         permission |= MapPermission::R;
@@ -184,12 +187,17 @@ pub fn sys_mmap(start: usize, len: usize, port: usize) -> isize {
     }
 }
 
-/// YOUR JOB: Implement munmap.
-pub fn sys_munmap(_start: usize, _len: usize) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_munmap NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
+// YOUR JOB: Implement munmap.
+pub fn sys_munmap(start: usize, len: usize) -> isize {
+    trace!("kernel: sys_munmap NOT IMPLEMENTED YET!");
+    if start & (PAGE_SIZE-1) != 0 { // 参数没有对齐，错误
+        return  -1;
+    } 
+    let start_va = start.into();
+    let end_va = (start+len).into();
+    if munmap_helper(start_va, end_va){
+        return 0
+    }
     -1
 }
 
