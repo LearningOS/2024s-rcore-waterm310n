@@ -7,7 +7,9 @@
 use super::__switch;
 use super::{fetch_task, TaskStatus};
 use super::{TaskContext, TaskControlBlock};
+use crate::config::MAX_SYSCALL_NUM;
 use crate::sync::UPSafeCell;
+use crate::timer::get_time_ms;
 use crate::trap::TrapContext;
 use alloc::sync::Arc;
 use lazy_static::*;
@@ -61,6 +63,11 @@ pub fn run_tasks() {
             let mut task_inner = task.inner_exclusive_access();
             let next_task_cx_ptr = &task_inner.task_cx as *const TaskContext;
             task_inner.task_status = TaskStatus::Running;
+            // 记录第一次运行的时间,给TASK_INFO系统调用使用的
+            if !task_inner.has_been_run {
+                task_inner.has_been_run = true;
+                task_inner.first_run_time = get_time_ms();
+            }
             // release coming task_inner manually
             drop(task_inner);
             // release coming task TCB manually
@@ -108,4 +115,17 @@ pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {
     unsafe {
         __switch(switched_task_cx_ptr, idle_task_cx_ptr);
     }
+}
+
+/// 更新当前任务的系统调用次数
+pub fn update_task_syscall_num(syscall_id: usize) {
+    let current_task = current_task().unwrap();
+    current_task.inner_exclusive_access().syscall_nums[syscall_id] += 1;
+}
+
+/// 获取当前任务的状态信息
+pub fn get_task_info() -> (TaskStatus,[u32; MAX_SYSCALL_NUM],usize) {
+    let current_task = current_task().unwrap();
+    let tcb = current_task.inner_exclusive_access();
+    return (tcb.task_status,tcb.syscall_nums,tcb.first_run_time);
 }
