@@ -185,6 +185,14 @@ impl TaskManager {
         inner.tasks[current].memory_set.insert_framed_area(start_va, end_va, permission);
         return  true;
     }
+
+    fn munmap_helper(&self,start_va: VirtAddr,
+        end_va: VirtAddr) -> bool {
+        // 首先获取当前任务
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].memory_set.delete_framed_area(start_va, end_va)
+    }
 }
 
 /// Run the first task in task list.
@@ -250,4 +258,10 @@ pub fn mmap_helper(start_va: VirtAddr,
     end_va: VirtAddr,
     permission: MapPermission) -> bool{
     TASK_MANAGER.mmap_helper(start_va, end_va, permission)
+}
+
+/// 向当前任务清除指定的虚拟内存帧区域。
+pub fn munmap_helper(start_va: VirtAddr,
+    end_va: VirtAddr) -> bool {
+        TASK_MANAGER.munmap_helper(start_va, end_va)
 }
