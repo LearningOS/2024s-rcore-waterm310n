@@ -14,6 +14,7 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
+use crate::config::MAX_SYSCALL_NUM;
 use crate::loader::{get_app_data, get_num_app};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
@@ -153,6 +154,22 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+
+    /// 更新TASK控制块中系统调用的次数
+    fn update_task_syscall_num(&self,syscall_id: usize) {
+        // 首先获取当前任务的app_id
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].syscall_nums[syscall_id] += 1;
+    }
+
+    fn get_task_info(&self)-> (TaskStatus,[u32; MAX_SYSCALL_NUM],usize){
+        // 首先获取当前任务的app_id
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        // 数组自动clone？
+        (inner.tasks[current].task_status,inner.tasks[current].syscall_nums,inner.tasks[current].first_run_time)
+    }
 }
 
 /// Run the first task in task list.
@@ -201,4 +218,14 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 /// Change the current 'Running' task's program break
 pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
+}
+
+/// 更新当前任务的系统调用次数
+pub fn update_task_syscall_num(syscall_id: usize) {
+    TASK_MANAGER.update_task_syscall_num(syscall_id)
+}
+
+/// 获取当前任务的状态信息
+pub fn get_task_info() -> (TaskStatus,[u32; MAX_SYSCALL_NUM],usize) {
+    TASK_MANAGER.get_task_info()
 }
