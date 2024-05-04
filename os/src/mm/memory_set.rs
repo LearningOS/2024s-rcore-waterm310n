@@ -300,6 +300,20 @@ impl MemorySet {
             false
         }
     }
+
+    /// 检查当前地址空间中是否存在一个逻辑段与某个逻辑段存在地址冲突。页大小粒度。存在返回true，不存在返回false
+    pub fn check_range(&self,start_va: VirtAddr,end_va: VirtAddr) -> bool {
+        let start_vpn: VirtPageNum = start_va.floor();
+        let end_vpn: VirtPageNum = end_va.ceil();
+        for map_area in self.areas.iter() {
+            for vpn in map_area.vpn_range {
+                if start_vpn <= vpn && end_vpn >= vpn {
+                    return true
+                }
+            }
+        }
+        return false
+    }
 }
 /// map area structure, controls a contiguous piece of virtual memory
 pub struct MapArea {

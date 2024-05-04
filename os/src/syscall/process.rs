@@ -6,10 +6,10 @@ use core::mem::size_of;
 use crate::{
     config::MAX_SYSCALL_NUM,
     loader::get_app_data_by_name,
-    mm::{translated_refmut, translated_str,translated_byte_buffer},
+    mm::{translated_refmut, translated_str,translated_byte_buffer,MapPermission}, 
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
-        suspend_current_and_run_next, TaskStatus,get_task_info
+        mmap_helper, suspend_current_and_run_next, TaskStatus,get_task_info
     },timer::{get_time_ms, get_time_us}
     
 };
@@ -158,13 +158,30 @@ pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
     0
 }
 
-/// YOUR JOB: Implement mmap.
-pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
+// YOUR JOB: Implement mmap.
+pub fn sys_mmap(start: usize, len: usize, port: usize) -> isize {
+    trace!("kernel: sys_mmap NOT IMPLEMENTED YET!");
+    if port & !0x7 != 0 || port & 0x7 == 0 { // 不满足port定义，错误
+        return -1
+    }
+    let start_va = start.into();
+    let end_va = (start+len).into();
+    let mut permission = MapPermission::U;
+    if port & 0x1 == 1 {
+        permission |= MapPermission::R;
+    }
+    if (port>>1) & 0x1 == 1 {
+        permission |= MapPermission::W;
+    }
+    if (port>>2) & 0x1 == 1{
+        permission |= MapPermission::X;
+    }
+    println!(" {:?},{:?}",start_va,end_va);
+    if mmap_helper(start_va,end_va,permission){
+        return 0;
+    }else{
+        return -1;
+    }
 }
 
 /// YOUR JOB: Implement munmap.

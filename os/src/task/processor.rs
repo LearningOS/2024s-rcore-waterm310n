@@ -8,6 +8,7 @@ use super::__switch;
 use super::{fetch_task, TaskStatus};
 use super::{TaskContext, TaskControlBlock};
 use crate::config::MAX_SYSCALL_NUM;
+use crate::mm::{MapPermission, VirtAddr};
 use crate::sync::UPSafeCell;
 use crate::timer::get_time_ms;
 use crate::trap::TrapContext;
@@ -128,4 +129,17 @@ pub fn get_task_info() -> (TaskStatus,[u32; MAX_SYSCALL_NUM],usize) {
     let current_task = current_task().unwrap();
     let tcb = current_task.inner_exclusive_access();
     return (tcb.task_status,tcb.syscall_nums,tcb.first_run_time);
+}
+
+/// 向当前任务添加新的内存帧区域，如果成功则返回true，否则返回false
+pub fn mmap_helper(start_va: VirtAddr,
+    end_va: VirtAddr,
+    permission: MapPermission) -> bool{
+    let current_task = current_task().unwrap();
+    let mut current_task_inner = current_task.inner_exclusive_access();
+    if current_task_inner.memory_set.check_range(start_va, end_va) {
+        return false;
+    }
+    current_task_inner.memory_set.insert_framed_area(start_va, end_va, permission);
+    return true;
 }
