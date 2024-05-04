@@ -10,8 +10,9 @@ use crate::{
     mm::{translated_refmut, translated_str,translated_byte_buffer},
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
-        suspend_current_and_run_next, TaskStatus,
-    },timer::get_time_us
+        suspend_current_and_run_next, TaskStatus,get_task_info
+    },timer::{get_time_ms, get_time_us}
+    
 };
 
 #[repr(C)]
@@ -141,12 +142,20 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
 /// YOUR JOB: Finish sys_task_info to pass testcases
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TaskInfo`] is splitted by two pages ?
-pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_task_info NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
+pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
+    trace!("kernel: sys_task_info NOT IMPLEMENTED YET!");
+    let token = current_user_token(); //获取当前的用户token
+    let buffers = translated_byte_buffer(token, ti as *const u8, size_of::<TimeVal>());
+    let ti:*mut TaskInfo = buffers[0].as_ptr() as *mut TaskInfo;
+    unsafe {
+        let (status,syscall_nums,first_run_time) =  get_task_info();
+        (*ti).status = status;
+        for i in 0..MAX_SYSCALL_NUM {
+            (*ti).syscall_times[i] = syscall_nums[i];
+        }
+        (*ti).time = get_time_ms()-first_run_time;
+    }
+    0
 }
 
 /// YOUR JOB: Implement mmap.
