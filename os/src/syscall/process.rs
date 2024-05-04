@@ -2,8 +2,8 @@
 use core::mem::size_of;
 
 use crate::{
-    config::MAX_SYSCALL_NUM, mm::translated_byte_buffer, task::{
-        change_program_brk, current_user_token, exit_current_and_run_next, get_task_info, suspend_current_and_run_next, TaskStatus
+    config::MAX_SYSCALL_NUM, mm::{translated_byte_buffer, MapPermission}, task::{
+        change_program_brk, current_user_token, exit_current_and_run_next, get_task_info, mmap_helper, suspend_current_and_run_next, TaskStatus
     }, timer::{get_time_ms, get_time_us}
 };
 
@@ -81,9 +81,29 @@ pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
 }
 
 // YOUR JOB: Implement mmap.
-pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
+pub fn sys_mmap(start: usize, len: usize, port: usize) -> isize {
     trace!("kernel: sys_mmap NOT IMPLEMENTED YET!");
-    -1
+    if port & !0x7 != 0 || port & 0x7 == 0 { // 不满足port定义，错误
+        return -1
+    }
+    let start_va = start.into();
+    let end_va = (start+len).into();
+    let mut permission = MapPermission::U;
+    if port & 0x1 == 1 {
+        permission |= MapPermission::R;
+    }
+    if (port>>1) & 0x1 == 1 {
+        permission |= MapPermission::W;
+    }
+    if (port>>2) & 0x1 == 1{
+        permission |= MapPermission::X;
+    }
+    println!(" {:?},{:?}",start_va,end_va);
+    if mmap_helper(start_va,end_va,permission){
+        return 0;
+    }else{
+        return -1;
+    }
 }
 
 // YOUR JOB: Implement munmap.

@@ -16,6 +16,7 @@ mod task;
 
 use crate::config::MAX_SYSCALL_NUM;
 use crate::loader::{get_app_data, get_num_app};
+use crate::mm::{MapPermission, VirtAddr};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
 use alloc::vec::Vec;
@@ -157,18 +158,32 @@ impl TaskManager {
 
     /// 更新TASK控制块中系统调用的次数
     fn update_task_syscall_num(&self,syscall_id: usize) {
-        // 首先获取当前任务的app_id
+        // 首先获取当前任务
         let mut inner = self.inner.exclusive_access();
         let current = inner.current_task;
         inner.tasks[current].syscall_nums[syscall_id] += 1;
     }
 
     fn get_task_info(&self)-> (TaskStatus,[u32; MAX_SYSCALL_NUM],usize){
-        // 首先获取当前任务的app_id
+        // 首先获取当前任务
         let inner = self.inner.exclusive_access();
         let current = inner.current_task;
         // 数组自动clone？
         (inner.tasks[current].task_status,inner.tasks[current].syscall_nums,inner.tasks[current].first_run_time)
+    }
+
+    fn mmap_helper(&self,start_va: VirtAddr,
+        end_va: VirtAddr,
+        permission: MapPermission) -> bool{
+        // 首先获取当前任务
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        
+        if inner.tasks[current].memory_set.check_range(start_va, end_va) {
+            return false;
+        }
+        inner.tasks[current].memory_set.insert_framed_area(start_va, end_va, permission);
+        return  true;
     }
 }
 
@@ -228,4 +243,11 @@ pub fn update_task_syscall_num(syscall_id: usize) {
 /// 获取当前任务的状态信息
 pub fn get_task_info() -> (TaskStatus,[u32; MAX_SYSCALL_NUM],usize) {
     TASK_MANAGER.get_task_info()
+}
+
+/// 向当前任务添加新的内存帧区域，如果成功则返回true，否则返回false
+pub fn mmap_helper(start_va: VirtAddr,
+    end_va: VirtAddr,
+    permission: MapPermission) -> bool{
+    TASK_MANAGER.mmap_helper(start_va, end_va, permission)
 }
