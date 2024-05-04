@@ -1,14 +1,16 @@
 //! Process management syscalls
 use alloc::sync::Arc;
 
+use core::mem::size_of;
+
 use crate::{
     config::MAX_SYSCALL_NUM,
     loader::get_app_data_by_name,
-    mm::{translated_refmut, translated_str},
+    mm::{translated_refmut, translated_str,translated_byte_buffer},
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
         suspend_current_and_run_next, TaskStatus,
-    },
+    },timer::get_time_us
 };
 
 #[repr(C)]
@@ -117,12 +119,23 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
 /// YOUR JOB: get time with second and microsecond
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
-pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
+pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
+    trace!("kernel: sys_get_time");
+    // ts地址是一个用户态的虚拟地址，所以需要找到它的物理地址，才能进行修改。
+    let token = current_user_token(); //获取当前的用户token
+    // println!("ts origin virtual address {:p} ",ts);
+    let buffers = translated_byte_buffer(token, ts as *const u8, size_of::<TimeVal>());
+    // println!("ts physical address {:p}",buffers[0].as_ptr());
+    let ts:*mut TimeVal = buffers[0].as_ptr() as *mut TimeVal; //希望这个结构体不会被跨页
+    // println!("ts real physical address {:p}",ts);
+    let us = get_time_us(); //获取时间
+    unsafe {
+        *ts = TimeVal {
+            sec: us / 1_000_000,
+            usec: us % 1_000_000,
+        };
+    }
+    0
 }
 
 /// YOUR JOB: Finish sys_task_info to pass testcases
