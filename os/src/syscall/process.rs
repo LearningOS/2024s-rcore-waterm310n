@@ -221,9 +221,10 @@ pub fn sys_spawn(path: *const u8) -> isize {
     // 首先获取程序的elf数据,这一步直接copy exec的实现
     let token = current_user_token();
     let path = translated_str(token, path);
-    if let Some(data) = get_app_data_by_name(path.as_str()) {
+    if let Some(app_inode) = open_file(path.as_str(), OpenFlags::RDONLY) {
+        let all_data = app_inode.read_all();
         let task = current_task().unwrap();
-        let new_task = task.spawn(data);
+        let new_task = task.spawn(all_data.as_slice());
         let new_pid = new_task.pid.0;
         let trap_cx = new_task.inner_exclusive_access().get_trap_cx();
         trap_cx.x[10] = 0;
@@ -238,10 +239,16 @@ pub fn sys_spawn(path: *const u8) -> isize {
 }
 
 // YOUR JOB: Set task priority.
-pub fn sys_set_priority(_prio: isize) -> isize {
+pub fn sys_set_priority(prio: isize) -> isize {
     trace!(
         "kernel:pid[{}] sys_set_priority NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    // 参数检查,要求优先级设置钟prio>=2
+    if prio < 2 {
+        return -1;
+    }
+    let task = current_task().unwrap();
+    task.change_prio(prio as usize);
+    return prio;
 }

@@ -78,6 +78,10 @@ pub struct TaskControlBlockInner {
     pub has_been_run:bool,
     /// 任务第一次执行时的时间,单位ms
     pub first_run_time:usize,
+    /// 任务已经走过的stride
+    pub stride:usize,
+    /// 任务的优先级
+    pub prio:usize,
 }
 
 impl TaskControlBlockInner {
@@ -145,6 +149,8 @@ impl TaskControlBlock {
                     syscall_nums:[0; MAX_SYSCALL_NUM],
                     has_been_run:false,
                     first_run_time:0,
+                    stride:0,
+                    prio:16,
                 })
             },
         };
@@ -229,6 +235,8 @@ impl TaskControlBlock {
                     syscall_nums:[0; MAX_SYSCALL_NUM],
                     has_been_run:false,
                     first_run_time:0,
+                    stride:0,
+                    prio:16,
                 })
             },
         });
@@ -290,6 +298,15 @@ impl TaskControlBlock {
         let pid_handle = pid_alloc();
         let kernel_stack = kstack_alloc();
         let kernel_stack_top = kernel_stack.get_top();
+        // spwan调用也继承文件描述符
+        let mut new_fd_table: Vec<Option<Arc<dyn File + Send + Sync>>> = Vec::new();
+        for fd in parent_inner.fd_table.iter() {
+            if let Some(file) = fd {
+                new_fd_table.push(Some(file.clone()));
+            } else {
+                new_fd_table.push(None);
+            }
+        }
         let task_control_block = Arc::new(TaskControlBlock {
             pid: pid_handle,
             kernel_stack,
@@ -305,9 +322,12 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: user_sp,
                     program_brk: user_sp,
+                    fd_table: new_fd_table,
                     syscall_nums:[0; MAX_SYSCALL_NUM],
                     has_been_run:false,
                     first_run_time:0,
+                    stride:0,
+                    prio:16,
                 })
             },
         });
@@ -326,6 +346,11 @@ impl TaskControlBlock {
         task_control_block
         // **** release child PCB
         // ---- release parent PCB
+    }
+
+    /// 改变应用程序的优先级
+    pub fn change_prio(self:&Arc<Self>,prio:usize) {
+        self.inner_exclusive_access().prio = prio;
     }
 }
 

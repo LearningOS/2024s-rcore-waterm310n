@@ -1,0 +1,9 @@
+# Lab3 总结
+
+## 功能实现总结
+
+对前两个实验已经实现的部分，由于我前面都是实现一个功能就一个commit，所以使用cherry-pick实现还是比较简单的。主要就是把挂靠在TASK_MANAGER上的任务全部交给PROCESSER来完成了。
+
+对于spawn直接复制fork与exec的代码，去掉其中从父进程创建地址空间的方式，而使用from_elf的方式，就可以通过了。
+
+stride调度：给TASK_BLOCK的添加prior与stride两个字段，然后再MANAGER中的fetch方法里，暴力获取最小的stride任务，然后加上PASS。rcore的测试样例很简单，没有对这种做法的考虑，所以直接过了。

@@ -25,3 +25,5 @@ pub const CLOCK_FREQ: usize = 12500000;
 pub const MEMORY_END: usize = 0x88000000;
 /// The base address of control registers in Virtio_Block device
 pub const MMIO: &[(usize, usize)] = &[(0x10001000, 0x1000)];
+/// 用于stride调度,从理论上来看只要小于usize的一半即可保证溢出的情况也能比较，不过此处不做要求，就实现的随意些
+pub const BIG_STRIDE: usize = 0x0000_ffff;
