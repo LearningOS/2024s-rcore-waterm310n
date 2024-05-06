@@ -75,6 +75,10 @@ pub struct TaskControlBlockInner {
     pub has_been_run:bool,
     /// 任务第一次执行时的时间,单位ms
     pub first_run_time:usize,
+    /// 任务已经走过的stride
+    pub stride:usize,
+    /// 任务的优先级
+    pub prio:usize,
 }
 
 impl TaskControlBlockInner {
@@ -128,6 +132,8 @@ impl TaskControlBlock {
                     syscall_nums:[0; MAX_SYSCALL_NUM],
                     has_been_run:false,
                     first_run_time:0,
+                    stride:0,
+                    prio:16,
                 })
             },
         };
@@ -204,6 +210,8 @@ impl TaskControlBlock {
                     syscall_nums:[0; MAX_SYSCALL_NUM],
                     has_been_run:false,
                     first_run_time:0,
+                    stride:0,
+                    prio:16,
                 })
             },
         });
@@ -283,6 +291,8 @@ impl TaskControlBlock {
                     syscall_nums:[0; MAX_SYSCALL_NUM],
                     has_been_run:false,
                     first_run_time:0,
+                    stride:0,
+                    prio:16,
                 })
             },
         });
@@ -301,6 +311,11 @@ impl TaskControlBlock {
         task_control_block
         // **** release child PCB
         // ---- release parent PCB
+    }
+
+    /// 改变应用程序的优先级
+    pub fn change_prio(self:&Arc<Self>,prio:usize) {
+        self.inner_exclusive_access().prio = prio;
     }
 }
 

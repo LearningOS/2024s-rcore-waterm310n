@@ -1,5 +1,6 @@
 //!Implementation of [`TaskManager`]
 use super::TaskControlBlock;
+use crate::config::BIG_STRIDE;
 use crate::sync::UPSafeCell;
 use alloc::collections::VecDeque;
 use alloc::sync::Arc;
@@ -23,7 +24,23 @@ impl TaskManager {
     }
     /// Take a process out of the ready queue
     pub fn fetch(&mut self) -> Option<Arc<TaskControlBlock>> {
-        self.ready_queue.pop_front()
+        // stride调度,brute-force,无畏性能,乐(
+        // 如果不想暴力，我觉得大概率是把当前这个双向队列修改成堆来用。
+        if self.ready_queue.len() == 0 {
+            return None
+        }
+        let (mut min_index,mut min_stride) = (0,self.ready_queue[0].inner_exclusive_access().stride);
+        for (index,task) in self.ready_queue.iter().enumerate().skip(1) {
+            if min_stride >= task.inner_exclusive_access().stride {
+                min_index = index;
+                min_stride = task.inner_exclusive_access().stride;
+            }
+        }
+        // 感觉可以直接在这里加上PASS值？直接偷懒了？正常应该要在实际调用的地方更新吧？
+        let mut inner = self.ready_queue[min_index].inner_exclusive_access();
+        inner.stride += BIG_STRIDE/inner.prio;
+        drop(inner);
+        self.ready_queue.remove(min_index)
     }
 }
 
