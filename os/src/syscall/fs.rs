@@ -1,5 +1,8 @@
 //! File and filesystem-related syscalls
-use crate::fs::{open_file, OpenFlags, Stat};
+
+use core::mem::size_of;
+
+use crate::fs::{linkat,get_stat ,unlinkat , open_file,  OpenFlags, Stat};
 use crate::mm::{translated_byte_buffer, translated_str, UserBuffer};
 use crate::task::{current_task, current_user_token};
 
@@ -76,28 +79,68 @@ pub fn sys_close(fd: usize) -> isize {
 }
 
 /// YOUR JOB: Implement fstat.
-pub fn sys_fstat(_fd: usize, _st: *mut Stat) -> isize {
+pub fn sys_fstat(fd: usize, st: *mut Stat) -> isize {
     trace!(
         "kernel:pid[{}] sys_fstat NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    let token = current_user_token();
+    let task = current_task().unwrap();
+    let inner = task.inner_exclusive_access();
+    if fd >= inner.fd_table.len() {
+        return -1;
+    }
+    
+    let buffers = translated_byte_buffer(token, st as *const u8, size_of::<Stat>());
+    // println!("ts physical address {:p}",buffers[0].as_ptr());
+    let st :*mut Stat = buffers[0].as_ptr() as *mut Stat; //希望这个结构体不会被跨页
+    
+    if let Some(file) = &inner.fd_table[fd] {
+        let file_name = file.get_file_name(); // 获取文件名
+        let stat_in_kernel = get_stat(file_name);
+        unsafe {
+            (*st).dev = stat_in_kernel.dev;
+            (*st).ino = stat_in_kernel.ino;
+            (*st).mode = stat_in_kernel.mode;
+            (*st).nlink = stat_in_kernel.nlink;
+        }
+        0
+    } else {
+        -1
+    }
 }
 
 /// YOUR JOB: Implement linkat.
-pub fn sys_linkat(_old_name: *const u8, _new_name: *const u8) -> isize {
+pub fn sys_linkat(old_name: *const u8, new_name: *const u8) -> isize {
     trace!(
         "kernel:pid[{}] sys_linkat NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    let token = current_user_token();
+    let old_name = translated_str(token, old_name);
+    let new_name = translated_str(token, new_name);
+    // 不考虑new_name文件已经存在的情况,但是如果同名是不允许的
+    if old_name == new_name {
+        return -1
+    }
+    if linkat(old_name,new_name)  { 
+        0
+    } else {
+        // 如果旧文件不存在
+        -1
+    }
 }
 
 /// YOUR JOB: Implement unlinkat.
-pub fn sys_unlinkat(_name: *const u8) -> isize {
+pub fn sys_unlinkat(name: *const u8) -> isize {
     trace!(
         "kernel:pid[{}] sys_unlinkat NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
+    let token = current_user_token();
+    let name = translated_str(token, name);
+    if unlinkat(name) {
+        return 0
+    }
     -1
 }

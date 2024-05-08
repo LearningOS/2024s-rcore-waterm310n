@@ -183,4 +183,100 @@ impl Inode {
         });
         block_cache_sync_all();
     }
+
+    /// 计算硬链接数量，仅仅允许ROOT_NODE调用
+    fn cal_nlink_cnt(&self,inode_id:u32) -> u32 {
+        let mut nlink_cnt = 0;
+        self.read_disk_inode(|disk_inode| {
+            let file_count = (disk_inode.size as usize) / DIRENT_SZ;
+            let mut dirent = DirEntry::empty();
+            for i in 0..file_count {
+                assert_eq!(
+                    disk_inode.read_at(DIRENT_SZ * i, dirent.as_bytes_mut(), &self.block_device,),
+                    DIRENT_SZ,
+                );
+                if dirent.inode_id() == inode_id { //只要有相同的inode_id就计数一次,遍历完所有
+                    nlink_cnt += 1
+                }
+            }
+        });
+        return nlink_cnt
+    }
+
+    /// 获取文件的inode，硬链接数
+    pub fn get_stat(&self,file_name:&str) -> (u64,u32) {
+        self.fs.lock();
+        // 首先找到file_name文件对应的inode_id
+        let op = |root_inode: &DiskInode| {
+            // assert it is a directory
+            assert!(root_inode.is_dir());
+            // has the file been created?
+            self.find_inode_id(&file_name, root_inode)
+        };
+        let file_name_inode_id = self.read_disk_inode(op).unwrap(); // 根据参数传入要求，保证了该目录项一定存在
+        return (file_name_inode_id as u64,self.cal_nlink_cnt(file_name_inode_id))
+    }
+
+    /// 向目录中创建硬链接,传入的参数需要保证old_name已经存在，并且old_name与new_name不相同
+    pub fn linkat(&self,old_name:String,new_name:String) {
+        let mut fs = self.fs.lock();
+        // 首先找到old_name文件对应的inode_id
+        let op = |root_inode: &DiskInode| {
+            // assert it is a directory
+            assert!(root_inode.is_dir());
+            // has the file been created?
+            self.find_inode_id(&old_name, root_inode)
+        };
+        let old_name_inode_id = self.read_disk_inode(op).unwrap(); // 根据参数传入要求，保证了该目录项一定存在  
+        // 向目录中添加目录项
+        self.modify_disk_inode(|root_inode| {
+            // append file in the dirent
+            let file_count = (root_inode.size as usize) / DIRENT_SZ;
+            let new_size = (file_count + 1) * DIRENT_SZ;
+            // increase size
+            self.increase_size(new_size as u32, root_inode, &mut fs);
+            // write dirent
+            let dirent = DirEntry::new(&new_name, old_name_inode_id);
+            root_inode.write_at(
+                file_count * DIRENT_SZ,
+                dirent.as_bytes(),
+                &self.block_device,
+            );
+        });
+        block_cache_sync_all();
+    }
+
+    /// 删除链接
+    pub fn unlinkat(&self,file_name:String) {
+        let mut fs = self.fs.lock();
+        // 首先找到name文件对应的inode_id
+        let op = |root_inode: &DiskInode| {
+            // assert it is a directory
+            assert!(root_inode.is_dir());
+            // has the file been created?
+            self.find_inode_id(&file_name, root_inode)
+        };
+        let file_name_inode_id = self.read_disk_inode(op).unwrap(); // 根据参数传入要求，保证了该目录项一定存在  
+        let mut nlink_cnt = 0;
+        self.modify_disk_inode(|disk_inode| {
+            let file_count = (disk_inode.size as usize) / DIRENT_SZ;
+            let mut dirent = DirEntry::empty();
+            for i in 0..file_count {
+                assert_eq!(
+                    disk_inode.read_at(DIRENT_SZ * i, dirent.as_bytes_mut(), &self.block_device,),
+                    DIRENT_SZ,
+                );
+                if dirent.inode_id() == file_name_inode_id { //指向相同的文件，硬链接数量加一
+                    nlink_cnt += 1;
+                }
+                if dirent.name() == file_name { //找到对应的文件
+                    nlink_cnt -= 1;
+                    disk_inode.write_at(DIRENT_SZ * i, &DirEntry::empty().as_bytes_mut(), &self.block_device);
+                }
+            }
+        });
+        if nlink_cnt == 0 { //此时说明该文件要被删除，下面对文件进行删除
+            fs.dealloc_inode(file_name_inode_id as usize);
+        }
+    }
 }

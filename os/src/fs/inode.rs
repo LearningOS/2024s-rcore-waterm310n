@@ -4,11 +4,11 @@
 //!
 //! `UPSafeCell<OSInodeInner>` -> `OSInode`: for static `ROOT_INODE`,we
 //! need to wrap `OSInodeInner` into `UPSafeCell`
-use super::File;
+use super::{File, Stat,StatMode};
 use crate::drivers::BLOCK_DEVICE;
 use crate::mm::UserBuffer;
 use crate::sync::UPSafeCell;
-use alloc::sync::Arc;
+use alloc::{string::String, sync::Arc};
 use alloc::vec::Vec;
 use bitflags::*;
 use easy_fs::{EasyFileSystem, Inode};
@@ -20,6 +20,7 @@ use lazy_static::*;
 pub struct OSInode {
     readable: bool,
     writable: bool,
+    file_name: String,
     inner: UPSafeCell<OSInodeInner>,
 }
 /// The OS inode inner in 'UPSafeCell'
@@ -30,10 +31,11 @@ pub struct OSInodeInner {
 
 impl OSInode {
     /// create a new inode in memory
-    pub fn new(readable: bool, writable: bool, inode: Arc<Inode>) -> Self {
+    pub fn new(file_name: String,readable: bool, writable: bool, inode: Arc<Inode>) -> Self {
         Self {
             readable,
             writable,
+            file_name:file_name,
             inner: unsafe { UPSafeCell::new(OSInodeInner { offset: 0, inode }) },
         }
     }
@@ -107,22 +109,54 @@ pub fn open_file(name: &str, flags: OpenFlags) -> Option<Arc<OSInode>> {
         if let Some(inode) = ROOT_INODE.find(name) {
             // clear size
             inode.clear();
-            Some(Arc::new(OSInode::new(readable, writable, inode)))
+            Some(Arc::new(OSInode::new(name.into(),readable, writable, inode)))
         } else {
             // create file
             ROOT_INODE
                 .create(name)
-                .map(|inode| Arc::new(OSInode::new(readable, writable, inode)))
+                .map(|inode| Arc::new(OSInode::new(name.into(),readable, writable, inode)))
         }
     } else {
         ROOT_INODE.find(name).map(|inode| {
             if flags.contains(OpenFlags::TRUNC) {
                 inode.clear();
             }
-            Arc::new(OSInode::new(readable, writable, inode))
+            Arc::new(OSInode::new(name.into(),readable, writable, inode))
         })
     }
 }
+
+/// 创建硬链接,如果成功返回True，否则返回False
+pub fn linkat(old_name: String,new_name:String) -> bool {
+    // 如果旧文件不存在，返回False
+    if ROOT_INODE.find(&old_name).is_none() {
+        return false
+    }
+    ROOT_INODE.linkat(old_name,new_name);
+    return true
+}
+
+/// 删除一个硬链接 ,如果成功返回True，否则返回False
+pub fn unlinkat(name: String) -> bool {
+    // 要删除的文件不存在，直接返回
+    if ROOT_INODE.find(&name).is_none(){
+        return false
+    }
+    ROOT_INODE.unlinkat(name);
+    return true;
+}
+/// 获取文件信息
+pub fn get_stat(file_name:&str) -> Stat{
+    let (inode_id,nlink_cnt)= ROOT_INODE.get_stat(file_name);
+    Stat {
+        dev:0,
+        ino:inode_id,
+        mode: StatMode::FILE ,
+        nlink:nlink_cnt,
+        pad:[0;7],
+    }
+}
+
 
 impl File for OSInode {
     fn readable(&self) -> bool {
@@ -154,5 +188,8 @@ impl File for OSInode {
             total_write_size += write_size;
         }
         total_write_size
+    }
+    fn get_file_name(&self) -> &str {
+        &self.file_name
     }
 }
