@@ -142,7 +142,7 @@ pub fn unlinkat(name: String) -> bool {
     if ROOT_INODE.find(&name).is_none(){
         return false
     }
-    ROOT_INODE.unlinkat(name);
+    println!("delete blocks id {:?}",ROOT_INODE.unlinkat(name));
     return true;
 }
 /// 获取文件信息

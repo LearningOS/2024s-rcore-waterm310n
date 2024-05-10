@@ -247,7 +247,7 @@ impl Inode {
     }
 
     /// 删除链接
-    pub fn unlinkat(&self,file_name:String) {
+    pub fn unlinkat(&self,file_name:String) -> Vec<u32>{
         let mut fs = self.fs.lock();
         // 首先找到name文件对应的inode_id
         let op = |root_inode: &DiskInode| {
@@ -276,7 +276,8 @@ impl Inode {
             }
         });
         if nlink_cnt == 0 { //此时说明该文件要被删除，下面对文件进行删除
-            fs.dealloc_inode(file_name_inode_id as usize);
+            return fs.dealloc_inode(file_name_inode_id as usize);
         }
+        return Vec::new();
     }
 }

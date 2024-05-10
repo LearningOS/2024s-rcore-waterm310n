@@ -3,8 +3,10 @@ use super::{
     SuperBlock,
 };
 use crate::BLOCK_SZ;
-use alloc::sync::Arc;
+use alloc::{sync::Arc, vec::Vec};
 use spin::Mutex;
+/// A indirect block 重新定义一下，因为不能直接导入
+type IndirectBlock = [u32; BLOCK_SZ / 4];
 ///An easy file system on block
 pub struct EasyFileSystem {
     ///Real device
@@ -131,8 +133,59 @@ impl EasyFileSystem {
     }
 
     /// 从位图中删除
-    pub fn dealloc_inode(&mut self,inode_id:usize) {
-        self.inode_bitmap.dealloc(&self.block_device, inode_id)
+    pub fn dealloc_inode(&mut self,inode_id:usize) -> Vec<u32> {
+        // 从位图中清除对应的位
+        self.inode_bitmap.dealloc(&self.block_device, inode_id);
+        // 然后找到对应的位，所在的inode
+        let (block_id,offset) = self.get_disk_inode_pos(inode_id as u32);
+        let mut deleted_block_id = Vec::new();
+        get_block_cache(block_id as usize, Arc::clone(&self.block_device))
+            .lock()
+            .modify(offset, |disk_inode:& mut DiskInode| {
+                // 找到对应的diskInode，下面主要的操作是根据该diskInode删除相关的数据
+                // 遍历block_id,并且调用dealloc_data释放
+                // 参考read_at实现
+                let mut cur_block_inner_id = 0;  
+                let mut cur_offset = 0;
+                let end = disk_inode.size as usize;
+                // 清除数据块
+                loop {
+                    let mut end_current_block = (cur_offset / BLOCK_SZ + 1) * BLOCK_SZ; //感觉这个可以直接用取整的方式一次性计算
+                    end_current_block = end_current_block.min(end); // 当前终止的块的大小
+                    let block_id =  disk_inode.get_block_id(cur_block_inner_id, &self.block_device);
+                    deleted_block_id.push(block_id);
+                    self.dealloc_data(block_id) ;
+                    if end_current_block == end {
+                        break;
+                    }
+                    cur_block_inner_id += 1;
+                    cur_offset = end_current_block; //移到下一块
+                }
+                // 清除idirect1
+                if disk_inode.indirect1 == 0 {
+                    return;
+                }
+                self.dealloc_data(disk_inode.indirect1);
+                if disk_inode.indirect2 == 0 {
+                    return;
+                }
+                // 清除idirect2指向的数据
+                get_block_cache(disk_inode.indirect2 as usize, Arc::clone(&self.block_device))
+                    .lock()
+                    .modify(0, |indirect2 : & mut IndirectBlock| {
+                        for &indirect1 in indirect2.iter() {
+                            if indirect1 == 0 {
+                                // 这里假设为0表示不指向任何数据
+                                break;
+                            }else{
+                                self.dealloc_data(indirect1);
+                            }
+                        }
+                    });
+                // 清除idirect2
+                self.dealloc_data(disk_inode.indirect2);
+            });
+        return deleted_block_id;
         // TODO
     }
 
