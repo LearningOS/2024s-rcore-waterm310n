@@ -30,12 +30,23 @@ impl Semaphore {
     }
 
     /// up operation of semaphore
-    pub fn up(&self) {
+    pub fn up(&self,sem_id:usize) {
         trace!("kernel: Semaphore::up");
         let mut inner = self.inner.exclusive_access();
         inner.count += 1;
         if inner.count <= 0 {
             if let Some(task) = inner.wait_queue.pop_front() {
+                let mut task_inner = task.inner_exclusive_access();
+                // 将need转换为alloc
+                if let Some(index) = task_inner.need.iter().enumerate().find(|(_,(id,_))| *id == sem_id).map(|(index,(_,_))| index) {
+                    task_inner.need[index].1 -= 1;
+                }
+                if let Some(index) = task_inner.allocation.iter().enumerate().find(|(_,(id,_))| *id == sem_id).map(|(index,(_,_))| index) {
+                    task_inner.allocation[index].1 += 1;
+                }else{
+                    task_inner.allocation.push((sem_id,1));
+                }
+                drop(task_inner);
                 wakeup_task(task);
             }
         }

@@ -121,7 +121,7 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
-                    enable_deadlock_detect:false
+                    enable_deadlock_detect:false,
                 })
             },
         });
@@ -248,7 +248,7 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
-                    enable_deadlock_detect:false,
+                    enable_deadlock_detect:parent.enable_deadlock_detect,
                 })
             },
         });
